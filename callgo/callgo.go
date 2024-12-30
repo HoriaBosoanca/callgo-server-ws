@@ -21,12 +21,11 @@ var upgrader = websocket.Upgrader{
 }
 
 type Member struct {
-	DisplayName string
-	ID string
 	Connection *websocket.Conn
 }
 
-type VideoData struct {
+type VideoDataTransfer struct {
+	DisplayName string `json:"name"`
 	VideoData string `json:"video"`
 }
 
@@ -47,12 +46,7 @@ func handleWebSockets(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Wrong session ID", http.StatusBadRequest)
 		return
 	}
-	displayName := r.URL.Query().Get("displayName")
-	if displayName == "" {
-		http.Error(w, "Error with display name", http.StatusBadRequest)
-		return
-	}
-	memberID, err := addMember(sessionID, displayName, connection)
+	memberID, err := addMember(sessionID, connection)
 	if err != nil {
 		log.Println("Error adding member:", err)
 		return
@@ -60,7 +54,7 @@ func handleWebSockets(w http.ResponseWriter, r *http.Request) {
 
 	for {
 		// RECEIVE
-		var receivedVideo VideoData
+		var receivedVideo VideoDataTransfer
 		err := connection.ReadJSON(&receivedVideo)
 		if err != nil {
 			log.Println("Error reading message:", err)
@@ -80,13 +74,13 @@ func handleWebSockets(w http.ResponseWriter, r *http.Request) {
 	disconnect(sessionID, memberID)
 }
 
-func addMember(sessionID string, displayName string, connection *websocket.Conn) (memberID string, err error) {
+func addMember(sessionID string, connection *websocket.Conn) (memberID string, err error) {
 	session, exists := sessions[sessionID]
 	if !exists {
 		session = make(map[string]Member)
 	}
 	memberID, err = shortid.Generate()
-	session[memberID] = Member{DisplayName: displayName, Connection: connection, ID: memberID}
+	session[memberID] = Member{Connection: connection}
 	sessions[sessionID] = session 
 	return memberID, err
 }
