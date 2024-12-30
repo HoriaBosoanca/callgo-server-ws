@@ -29,6 +29,10 @@ type VideoDataTransfer struct {
 	VideoData string `json:"video"`
 }
 
+type Password struct {
+	Password string `json:"password"`
+}
+
 var sessions map[string]map[string]Member = make(map[string]map[string]Member)
 
 // /ws?sessionID=abcd
@@ -46,10 +50,9 @@ func handleWebSockets(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Wrong session ID", http.StatusBadRequest)
 		return
 	}
-	memberID, err := addMember(sessionID, connection)
-	if err != nil {
-		log.Println("Error adding member:", err)
-		return
+	memberID, password := addMember(sessionID, connection)
+	if password != "nil" {
+		connection.WriteJSON(Password{Password: password})
 	}
 
 	for {
@@ -74,15 +77,17 @@ func handleWebSockets(w http.ResponseWriter, r *http.Request) {
 	disconnect(sessionID, memberID)
 }
 
-func addMember(sessionID string, connection *websocket.Conn) (memberID string, err error) {
+func addMember(sessionID string, connection *websocket.Conn) (memberID string, password string) {
 	session, exists := sessions[sessionID]
+	password = "nil"
 	if !exists {
 		session = make(map[string]Member)
+		password = shortid.MustGenerate()
 	}
-	memberID, err = shortid.Generate()
+	memberID = shortid.MustGenerate()
 	session[memberID] = Member{Connection: connection}
 	sessions[sessionID] = session 
-	return memberID, err
+	return memberID, password
 }
 
 func disconnect(sessionID string, memberID string) {
