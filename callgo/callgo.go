@@ -140,9 +140,9 @@ func disconnect(sessionID string, memberID string, requiresPassword bool, passwo
 	delete(session.Members, memberID)
 	sessions[sessionID] = session
 
-	if len(session.Members) == 0 {
-		delete(sessions, sessionID)
-	}
+	// if len(session.Members) == 0 {
+	// 	delete(sessions, sessionID)
+	// }
 }
 
 func auth(sessionID string, memberID string, password string) (succes bool) {
