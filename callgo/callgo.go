@@ -11,6 +11,7 @@ import (
 	"github.com/teris-io/shortid"
 )
 
+// ENDPOINTS
 func HandleEndpoint(router *mux.Router) {
 	router.HandleFunc("/ws", OptionsHandler).Methods("OPTIONS")
 	router.HandleFunc("/disconnect", OptionsHandler).Methods("OPTIONS")
@@ -27,6 +28,14 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
+// CONNECTIONS
+var sessions map[string]*Session = make(map[string]*Session)
+
+type Session struct {
+	Members map[string]*Member
+	Password string
+}
+
 type Member struct {
 	Connection *websocket.Conn
 	mu sync.Mutex
@@ -41,6 +50,7 @@ func (member *Member) safeWrite(data interface{}) {
 	}
 }
 
+// JSON 
 type MemberID struct {
 	MemberID string `json:"memberID"`
 }
@@ -51,14 +61,18 @@ type VideoDataTransfer struct {
 	VideoData string `json:"video"`
 }
 
-type Session struct {
-	Members map[string]*Member
-	Password string
+type InitializeResponse struct {
+	SessionID string `json:"sessionID"`
+	Password string `json:"password"`
 }
 
-var sessions map[string]Session = make(map[string]Session)
+type Disconnect struct {
+	SessionID string `json:"sessionID"`
+	MemberID string `json:"memberID"`
+	Password string `json:"password"`
+}
 
-// /ws?sessionID=abcd
+// MAIN WS LOOP
 func handleWebSockets(w http.ResponseWriter, r *http.Request) {
 	connection, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -95,26 +109,28 @@ func handleWebSockets(w http.ResponseWriter, r *http.Request) {
 	disconnect(sessionID, memberID, false, "nil")
 }
 
-type InitializeResponse struct {
-	SessionID string `json:"sessionID"`
-	Password string `json:"password"`
-}
-
+// HTTP
 func makeSession(w http.ResponseWriter, r *http.Request) {
 	sessionID := shortid.MustGenerate()
-	session := sessions[sessionID]
-
-	password := shortid.MustGenerate()
-	session.Password = password
-	session.Members = make(map[string]*Member)
-	
+	session := &Session{Members: make(map[string]*Member), Password: shortid.MustGenerate()}
 	sessions[sessionID] = session
 	
 	w.WriteHeader(http.StatusCreated)
 	res := InitializeResponse{SessionID: sessionID, Password: session.Password}
 	json.NewEncoder(w).Encode(res)
 }
+	
+func triggerDisconnect(w http.ResponseWriter, r *http.Request) {
+	var disconnectData Disconnect
+	err := json.NewDecoder(r.Body).Decode(&disconnectData)
+	if err != nil {
+		http.Error(w, "Error decoding data", http.StatusBadRequest)
+		return
+	}
+	disconnect(disconnectData.SessionID, disconnectData.MemberID, true, disconnectData.Password)
+}
 
+// UTILITIES
 func addMember(sessionID string, connection *websocket.Conn) (memberID string) {
 	session := sessions[sessionID]
 	memberID = shortid.MustGenerate()
@@ -161,20 +177,4 @@ func auth(sessionID string, memberID string, password string) (succes bool) {
 		log.Println("Wrong password", sessionID, memberID, password)
 		return false
 	}
-}
-
-type Disconnect struct {
-	SessionID string `json:"sessionID"`
-	MemberID string `json:"memberID"`
-	Password string `json:"password"`
-}
-
-func triggerDisconnect(w http.ResponseWriter, r *http.Request) {
-	var disconnectData Disconnect
-	err := json.NewDecoder(r.Body).Decode(&disconnectData)
-	if err != nil {
-		http.Error(w, "Error decoding data", http.StatusBadRequest)
-		return
-	}
-	disconnect(disconnectData.SessionID, disconnectData.MemberID, true, disconnectData.Password)
 }
