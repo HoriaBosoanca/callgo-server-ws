@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"sync"
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
@@ -28,6 +29,16 @@ var upgrader = websocket.Upgrader{
 
 type Member struct {
 	Connection *websocket.Conn
+	mu sync.Mutex
+}
+
+func (member *Member) safeWrite(data interface{}) {
+	member.mu.Lock()
+	defer member.mu.Unlock()
+	err := member.Connection.WriteJSON(data)
+	if err != nil {
+		log.Println("Error writing to connection:", err)
+	}
 }
 
 type MemberID struct {
@@ -40,13 +51,9 @@ type VideoDataTransfer struct {
 	VideoData string `json:"video"`
 }
 
-type Password struct {
-	Password string `json:"password"`
-}
-
 type Session struct {
-	Members map[string]Member
-	Password Password
+	Members map[string]*Member
+	Password string
 }
 
 var sessions map[string]Session = make(map[string]Session)
@@ -79,12 +86,9 @@ func handleWebSockets(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// SEND
-		for _, member := range sessions[sessionID].Members {
-			err = member.Connection.WriteJSON(receivedVideo)
-			if err != nil {
-				log.Println("Error writing message:", err)
-				break
-			}
+		session := sessions[sessionID]
+		for _, member := range session.Members {
+			member.safeWrite(receivedVideo)
 		}
 	}
 
@@ -101,20 +105,20 @@ func makeSession(w http.ResponseWriter, r *http.Request) {
 	session := sessions[sessionID]
 
 	password := shortid.MustGenerate()
-	session.Password = Password{Password: password}
-	session.Members = make(map[string]Member)
+	session.Password = password
+	session.Members = make(map[string]*Member)
 	
 	sessions[sessionID] = session
 	
 	w.WriteHeader(http.StatusCreated)
-	res := InitializeResponse{SessionID: sessionID, Password: session.Password.Password}
+	res := InitializeResponse{SessionID: sessionID, Password: session.Password}
 	json.NewEncoder(w).Encode(res)
 }
 
 func addMember(sessionID string, connection *websocket.Conn) (memberID string) {
 	session := sessions[sessionID]
 	memberID = shortid.MustGenerate()
-	session.Members[memberID] = Member{Connection: connection}
+	session.Members[memberID] = &Member{Connection: connection}
 	sessions[sessionID] = session
 	return memberID
 }
@@ -151,7 +155,7 @@ func auth(sessionID string, memberID string, password string) (succes bool) {
 		log.Println("Session not found", sessionID, memberID, password)
 		return false
 	}
-	if session.Password.Password == password {
+	if session.Password == password {
 		return true
 	} else {
 		log.Println("Wrong password", sessionID, memberID, password)
