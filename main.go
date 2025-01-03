@@ -18,7 +18,7 @@ func main() {
 	// get port
 	port := os.Getenv("PORT")
     if port == "" {
-        port = "4321"
+        port = "8080"
     }
 
 	// Handle endpoints
