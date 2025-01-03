@@ -40,10 +40,10 @@ type Session struct {
 	Password string
 }
 
-func (s *Session) addMember(conn *websocket.Conn) (member *Member) {
+func (s *Session) addMember(conn *websocket.Conn, displayName string) (member *Member) {
 	memberID := shortid.MustGenerate()
 	s.mu.Lock()
-	member = &Member{Connection: conn, MemberID: memberID}
+	member = &Member{Connection: conn, MemberID: memberID, DisplayName: displayName}
 	s.Members[memberID] = member
 	s.mu.Unlock()
 	return member
@@ -65,13 +65,12 @@ func (s *Session) disconnectMember(member *Member, requiresAuth bool, password s
 	}
 
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	member.Connection.Close()
 	delete(s.Members, member.MemberID)
-
-	// if len(s.Members) == 0 {
-	// 	delete(sessions.Sessions, s.SessionID)
-	// }
+	s.mu.Unlock()
+	
+	// on (intentional) client disconnect
+	s.broadcast(OnDisconnect{DisconnectMemberID: member.MemberID})
 }
 
 func (s *Session) broadcast(data interface{}) {
@@ -95,6 +94,7 @@ type Member struct {
 	Connection *websocket.Conn
 	mu sync.Mutex
 	MemberID string
+	DisplayName string
 }
 
 func (m *Member) safeWrite(data interface{}) {
