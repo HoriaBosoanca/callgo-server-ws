@@ -56,7 +56,8 @@ func handleWebSockets(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Wrong session ID", http.StatusBadRequest)
 		return
 	}
-	myMember := sessions.getSession(sessionID).addMember(connection)
+	mySession := sessions.getSession(sessionID)
+	myMember := mySession.addMember(connection)
 	myMember.safeWrite(MemberID{MemberID: myMember.MemberID})
 
 	for {
@@ -69,12 +70,7 @@ func handleWebSockets(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// SEND
-		session := sessions.Sessions[sessionID]
-		session.mu.Lock()
-		for _, member := range session.Members {
-			member.safeWrite(receivedVideo)
-		}
-		session.mu.Unlock()
+		mySession.broadcast(receivedVideo)
 	}
 
 	sessions.getSession(sessionID).disconnectMember(myMember, false, "nil")

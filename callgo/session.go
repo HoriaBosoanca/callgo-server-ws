@@ -74,6 +74,14 @@ func (s *Session) disconnectMember(member *Member, requiresAuth bool, password s
 	// }
 }
 
+func (s *Session) broadcast(data interface{}) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, member := range s.Members {
+		member.safeWrite(data)
+	}
+}
+
 func (s *Session) auth(password string) (succes bool) {
 	if s.Password == password {
 		return true
