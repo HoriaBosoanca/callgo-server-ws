@@ -24,23 +24,31 @@ type OnInitSelf struct {
 	MyID string `json:"myID"`
 }
 
-type OnInitBroadcast struct {
-	InitID string `json:"InitID"`
-	InitName string `json:"InitName"`
-}
-
-type OnDisconnect struct {
-	DisconnectMemberID string `json:"disconnectID"`
-}
-
-type VideoDataReceive struct {
-	VideoData string `json:"video"`
-}
-
-type VideoDataSend struct {
-	DisplayName string `json:"name"`
+type MemberNotification struct {
+	Type string `json:"type"`
 	MemberID string `json:"memberID"`
-	VideoData string `json:"video"`
+	MemberName string `json:"memberName"`
+}
+
+// type VideoDataReceive struct {
+// 	VideoData string `json:"video"`
+// }
+
+// type VideoDataSend struct {
+// 	DisplayName string `json:"name"`
+// 	MemberID string `json:"memberID"`
+// 	VideoData string `json:"video"`
+// }
+
+type SDPmessage struct {
+	To string `json:"to"`
+	From string `json:"from"`
+	SDP SDP `json:"sdp"`
+}
+
+type SDP struct {
+	Type string `json:"type"`
+	SDP string `json:"sdp"`
 }
 
 // MAIN WS LOOP
@@ -68,32 +76,40 @@ func handleWebSockets(w http.ResponseWriter, r *http.Request) {
 	// on (unexpecred) client disconnect, notify everyone else
 	myMember.Connection.SetCloseHandler(func(code int, text string) error {
 		delete(mySession.Members, myMember.MemberID)
-		mySession.broadcast(OnDisconnect{DisconnectMemberID: myMember.MemberID})
+		mySession.broadcast(MemberNotification{Type: "leave", MemberID: myMember.MemberID, MemberName: myMember.DisplayName})
 		return nil
 	})
 
 	// on client connect
-		// notify yourself about your ID
-	myMember.safeWrite(OnInitSelf{MyID: myMember.MemberID})
-		// notify everyone about all the members in the meeting
+		// notify self about what ID you have
+	myMember.safeWrite(MemberNotification{Type: "assignID", MemberID: myMember.MemberID, MemberName: myMember.DisplayName})	
+		// notify self about who is already in meeting
 	for _, member := range mySession.Members {
-		mySession.broadcast(OnInitBroadcast{InitID: member.MemberID, InitName: member.DisplayName})
+		if member.MemberID != myMember.MemberID {
+			myMember.safeWrite(MemberNotification{Type: "exist", MemberName: member.DisplayName, MemberID: member.MemberID})
+		}
 	}
+		// notify everyone else about the new member
+	for _, member := range mySession.Members {
+		if member.MemberID != myMember.MemberID {
+			member.safeWrite(MemberNotification{Type: "join", MemberName: myMember.DisplayName, MemberID: myMember.MemberID})
+		}
+	}
+
+	defer sessions.getSession(sessionID).disconnectMember(myMember, false, "nil")
 	
 	for {
 		// RECEIVE
-		var video VideoDataReceive
-		err := myMember.Connection.ReadJSON(&video)
+		var sdp SDPmessage
+		err := myMember.Connection.ReadJSON(&sdp)
 		if err != nil {
 			log.Println("Error reading message:", err)
 			break
 		}
 
 		// SEND
-		mySession.broadcast(VideoDataSend{DisplayName: myDisplayName, MemberID: myMember.MemberID, VideoData: video.VideoData})
+		mySession.getMember(sdp.To).safeWrite(sdp)
 	}
-
-	sessions.getSession(sessionID).disconnectMember(myMember, false, "nil")
 }
 
 // HTTP

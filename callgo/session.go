@@ -70,7 +70,7 @@ func (s *Session) disconnectMember(member *Member, requiresAuth bool, password s
 	s.mu.Unlock()
 	
 	// on (intentional) client disconnect
-	s.broadcast(OnDisconnect{DisconnectMemberID: member.MemberID})
+	s.broadcast(MemberNotification{Type: "leave", MemberID: member.MemberID, MemberName: member.DisplayName})
 }
 
 func (s *Session) broadcast(data interface{}) {
