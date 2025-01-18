@@ -30,17 +30,12 @@ type MemberNotification struct {
 	MemberName string `json:"memberName"`
 }
 
-// type VideoDataReceive struct {
-// 	VideoData string `json:"video"`
-// }
-
-// type VideoDataSend struct {
-// 	DisplayName string `json:"name"`
-// 	MemberID string `json:"memberID"`
-// 	VideoData string `json:"video"`
-// }
+type MessageType struct {
+	Type string `json:"type"`
+}
 
 type SDPmessage struct {
+	Type string `json:"type"`
 	To string `json:"to"`
 	From string `json:"from"`
 	SDP SDP `json:"sdp"`
@@ -49,6 +44,26 @@ type SDPmessage struct {
 type SDP struct {
 	Type string `json:"type"`
 	SDP string `json:"sdp"`
+}
+
+type ICEmessage struct {
+	Type string `json:"type"`
+	To string `json:"to"`
+	From string `json:"from"`
+	ICE ICE `json:"ice"`
+}
+
+type ICE struct {
+	Candidate string `json:"candidate"`
+	SdpMid string `json:"sdpMid"`
+	SdpMLineIndex int `json:"sdpMLineIndex"` 
+	Foundation string `json:"foundation"`
+	Component string `json:"component"`
+	Priority int `json:"priority"`
+	Address string `json:"address"`
+	Protocol string `json:"protocol"`
+	Port int `json:"port"`
+	Type string `json:"type"`
 }
 
 // MAIN WS LOOP
@@ -99,16 +114,38 @@ func handleWebSockets(w http.ResponseWriter, r *http.Request) {
 	defer sessions.getSession(sessionID).disconnectMember(myMember, false, "nil")
 	
 	for {
-		// RECEIVE
-		var sdp SDPmessage
-		err := myMember.Connection.ReadJSON(&sdp)
+		_, message, err := myMember.Connection.ReadMessage()
 		if err != nil {
 			log.Println("Error reading message:", err)
 			break
 		}
 
-		// SEND
-		mySession.getMember(sdp.To).safeWrite(sdp)
+		var messageType MessageType
+		err = json.Unmarshal(message, &messageType)
+		if err != nil {
+			log.Println("Error unmarshalling to message type:", err)
+			break
+		}
+
+		switch messageType.Type {
+		case "sdp":
+			var sdp SDPmessage
+			err = json.Unmarshal(message, &sdp)
+			if err != nil {
+				log.Println("Error unmarshalling sdp:", err)
+				break
+			} 
+			mySession.getMember(sdp.To).safeWrite(sdp)
+		case "ice":
+			var ice ICEmessage
+			err = json.Unmarshal(message, &ice)
+			if err != nil {
+				log.Println("Error unmarshalling ice:", err)
+			}
+			mySession.getMember(ice.To).safeWrite(ice)
+		default:
+			log.Println("Unknown message type:", messageType.Type)
+		}
 	}
 }
 
