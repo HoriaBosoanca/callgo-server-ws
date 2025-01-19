@@ -142,7 +142,9 @@ func handleWebSockets(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				log.Println("Error unmarshalling ice:", err)
 			}
-			mySession.getMember(ice.To).safeWrite(ice)
+			if mySession.getMember(ice.To).Connection != nil {
+				mySession.getMember(ice.To).safeWrite(ice)
+			} 
 		default:
 			log.Println("Unknown message type:", messageType.Type)
 		}
